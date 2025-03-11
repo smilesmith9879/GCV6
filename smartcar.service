@@ -1,0 +1,17 @@
+[Unit]
+Description=AI Smart Car Service
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/ai-smart-car
+ExecStart=/usr/bin/python3 /home/pi/ai-smart-car/app.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=smartcar
+
+[Install]
+WantedBy=multi-user.target 

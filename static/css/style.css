@@ -1,0 +1,203 @@
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: #121212;
+    color: #ffffff;
+    line-height: 1.6;
+    overflow: hidden;
+}
+
+.container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    padding: 10px;
+}
+
+/* Header styles */
+header {
+    padding: 10px 0;
+    text-align: center;
+}
+
+h1 {
+    font-size: 1.5rem;
+    margin-bottom: 10px;
+    color: #4CAF50;
+}
+
+.status-bar {
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    padding: 5px;
+    margin-bottom: 10px;
+}
+
+.status-item {
+    margin: 5px;
+    font-size: 0.9rem;
+}
+
+.label {
+    font-weight: bold;
+    color: #4CAF50;
+}
+
+#connection-status {
+    color: #f44336;
+}
+
+#connection-status.connected {
+    color: #4CAF50;
+}
+
+/* Main content styles */
+.main-content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    gap: 10px;
+    overflow: hidden;
+}
+
+@media (min-width: 768px) and (orientation: landscape) {
+    .main-content {
+        flex-direction: row;
+    }
+}
+
+.video-container, .map-container {
+    position: relative;
+    flex: 1;
+    background-color: #1e1e1e;
+    border-radius: 5px;
+    overflow: hidden;
+    min-height: 200px;
+}
+
+#video-feed {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+#map-3d {
+    width: 100%;
+    height: 100%;
+}
+
+.overlay-controls {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    display: flex;
+    gap: 5px;
+}
+
+.control-btn {
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.control-btn:hover {
+    background-color: rgba(76, 175, 80, 0.7);
+}
+
+/* Joystick controls */
+.control-container {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0;
+    height: 150px;
+}
+
+.joystick-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    max-width: 50%;
+}
+
+.joystick {
+    width: 120px;
+    height: 120px;
+    background-color: rgba(30, 30, 30, 0.7);
+    border-radius: 50%;
+    position: relative;
+}
+
+.joystick-label {
+    margin-top: 5px;
+    font-size: 0.9rem;
+    color: #4CAF50;
+}
+
+/* Fullscreen mode */
+.fullscreen-mode .video-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 1000;
+}
+
+.fullscreen-mode .status-bar {
+    position: fixed;
+    top: 10px;
+    left: 10px;
+    right: 10px;
+    z-index: 1001;
+    background-color: rgba(30, 30, 30, 0.7);
+}
+
+/* Responsive adjustments */
+@media (max-width: 767px) {
+    .status-bar {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .status-item {
+        margin: 2px;
+        font-size: 0.8rem;
+    }
+    
+    h1 {
+        font-size: 1.2rem;
+    }
+    
+    .control-container {
+        height: 120px;
+    }
+    
+    .joystick {
+        width: 100px;
+        height: 100px;
+    }
+}
+
+@media (orientation: landscape) {
+    .control-container {
+        position: absolute;
+        bottom: 10px;
+        left: 10px;
+        right: 10px;
+        z-index: 100;
+    }
+} 

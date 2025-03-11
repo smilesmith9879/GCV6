@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AI Smart Car Control</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="{{ url_for('static', filename='js/lib/socket.io.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/lib/nipplejs.min.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/lib/three.min.js') }}"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Smart Car Control</h1>
+            <div class="status-bar">
+                <div class="status-item">
+                    <span class="label">Speed:</span>
+                    <span id="speed-value">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Direction:</span>
+                    <span id="direction-value">stop</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Gimbal H:</span>
+                    <span id="gimbal-h-value">80°</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Gimbal V:</span>
+                    <span id="gimbal-v-value">40°</span>
+                </div>
+                <div class="status-item">
+                    <span class="label">Connection:</span>
+                    <span id="connection-status">Disconnected</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <div class="video-container">
+                <img id="video-feed" src="{{ url_for('video_feed') }}" alt="Video Feed">
+                <div class="overlay-controls">
+                    <button id="fullscreen-btn" class="control-btn">Fullscreen</button>
+                    <button id="reset-gimbal-btn" class="control-btn">Reset Gimbal</button>
+                </div>
+            </div>
+
+            <div class="map-container">
+                <div id="map-3d"></div>
+                <div class="overlay-controls">
+                    <button id="reset-map-btn" class="control-btn">Reset Map</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="control-container">
+            <div class="joystick-container">
+                <div id="car-joystick" class="joystick"></div>
+                <div class="joystick-label">Car Control</div>
+            </div>
+            <div class="joystick-container">
+                <div id="gimbal-joystick" class="joystick"></div>
+                <div class="joystick-label">Gimbal Control</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html> 
