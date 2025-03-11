@@ -42,6 +42,13 @@
                     <span class="label">Connection:</span>
                     <span id="connection-status">Disconnected</span>
                 </div>
+                <div class="status-item battery-status">
+                    <span class="label">Battery:</span>
+                    <span id="battery-value">100%</span>
+                    <div id="battery-indicator" class="battery-indicator">
+                        <div id="battery-level" class="battery-level"></div>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -88,6 +95,15 @@
                     <span class="label">Acceleration Z:</span>
                     <span id="accel-z-value">0 g</span>
                 </div>
+            </div>
+        </div>
+        
+        <!-- 低电量警告弹窗 -->
+        <div id="battery-alert" class="battery-alert">
+            <div class="battery-alert-content">
+                <h3>电量警告</h3>
+                <p id="battery-alert-message">电池电量低，请尽快充电！</p>
+                <button id="battery-alert-close">确定</button>
             </div>
         </div>
     </div>

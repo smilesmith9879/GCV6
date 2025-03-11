@@ -38,11 +38,70 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000); // 每3秒检测一次
     }
     
+    // 电池状态元素
+    const batteryValue = document.getElementById('battery-value');
+    const batteryLevel = document.getElementById('battery-level');
+    const batteryAlert = document.getElementById('battery-alert');
+    const batteryAlertMessage = document.getElementById('battery-alert-message');
+    const batteryAlertClose = document.getElementById('battery-alert-close');
+    
+    // 电池状态处理
+    function updateBatteryStatus(data) {
+        // 更新电池百分比显示
+        batteryValue.textContent = `${data.level}%`;
+        
+        // 更新电池指示器宽度
+        batteryLevel.style.width = `${data.level}%`;
+        
+        // 移除所有状态类
+        batteryLevel.classList.remove('normal', 'low', 'critical');
+        
+        // 根据状态设置颜色
+        if (data.status === 'normal') {
+            batteryLevel.classList.add('normal');
+        } else if (data.status === 'low') {
+            batteryLevel.classList.add('low');
+        } else if (data.status === 'critical') {
+            batteryLevel.classList.add('critical');
+        }
+    }
+    
+    // 处理低电量警告
+    function showBatteryAlert(message) {
+        batteryAlertMessage.textContent = message;
+        batteryAlert.classList.add('show');
+    }
+    
+    // 关闭电池警告弹窗
+    batteryAlertClose.addEventListener('click', function() {
+        batteryAlert.classList.remove('show');
+    });
+    
+    // 接收电池状态更新
+    socket.on('battery_update', function(data) {
+        updateBatteryStatus(data);
+    });
+    
+    // 接收电池极低警告
+    socket.on('battery_critical', function(data) {
+        showBatteryAlert(data.message);
+    });
+    
     socket.on('connect', function() {
         connectionStatus.textContent = 'Connected';
         connectionStatus.classList.add('connected');
         startHeartbeat(); // 连接成功后启动心跳检测
         console.log('已连接到服务器');
+        
+        // 连接成功后立即请求电池状态
+        fetch('/battery_status')
+            .then(response => response.json())
+            .then(data => {
+                updateBatteryStatus(data);
+            })
+            .catch(err => {
+                console.error('获取电池状态失败:', err);
+            });
     });
     
     socket.on('disconnect', function() {

@@ -12,6 +12,7 @@ from LOBOROBOT import LOBOROBOT
 from camera import Camera
 from slam import SLAM
 from imu import MPU6050  # Import the MPU6050 class
+from battery import BatteryMonitor  # Import the BatteryMonitor class
 
 # 初始化eventlet，解决并发问题
 eventlet.monkey_patch()
@@ -29,6 +30,8 @@ robot = LOBOROBOT()
 # 降低分辨率到320x240，提高传输性能
 camera = Camera(camera_id=0, width=320, height=240, robot=robot, jpeg_quality=60)
 slam = SLAM(camera=camera, use_imu=True)  # Enable IMU integration with SLAM
+# 初始化电池监测模块
+battery_monitor = BatteryMonitor(robot=robot, update_interval=10)
 
 # Global variables for control
 control_lock = threading.Lock()
@@ -120,12 +123,20 @@ def imu_data():
 
 @app.route('/imu_status')
 def imu_status():
-    """Return the current IMU status"""
-    return jsonify({'available': slam.imu_available})
+    """Return IMU status"""
+    return jsonify({
+        'available': slam.imu_available
+    })
+
+@app.route('/battery_status')
+def battery_status():
+    """返回电池状态信息的API端点"""
+    status = battery_monitor.get_battery_status()
+    return jsonify(status)
 
 @app.route('/reset_slam', methods=['POST'])
 def reset_slam():
-    """Reset the SLAM system"""
+    """Reset SLAM system"""
     slam.reset()
     return jsonify({'status': 'success'})
 
@@ -272,10 +283,12 @@ def handle_gimbal_control(data):
 
 # Periodically send IMU data to clients
 def send_imu_data():
-    """Send IMU data to clients periodically"""
+    """Send IMU data periodically"""
+    print("IMU data thread started")
     while True:
         if slam.imu_available:
             try:
+                # Get orientation data
                 orientation = slam.imu.get_orientation()
                 acceleration = slam.imu.get_acceleration()
                 
@@ -307,6 +320,49 @@ def send_imu_data():
         
         time.sleep(0.2)  # Send 5 times per second
 
+# 添加电池状态更新函数
+def send_battery_status():
+    """定期发送电池状态到客户端"""
+    print("电池状态监测线程已启动")
+    while True:
+        try:
+            status = battery_monitor.get_battery_status()
+            socketio.emit('battery_update', status)
+            
+            # 如果电量极低，发送警告
+            if battery_monitor.is_critical_battery():
+                socketio.emit('battery_critical', {
+                    'message': '电池电量极低，请尽快充电!',
+                    'level': status['level']
+                })
+                
+                # 如果电量过低，自动减速以节省电量
+                global current_speed
+                if current_speed > 15:  # 如果当前速度高于15
+                    with control_lock:
+                        robot.t_stop(0)  # 暂时停止
+                        time.sleep(0.5)
+                        # 以较低的速度继续当前方向
+                        if current_direction == 'forward':
+                            robot.t_up(15, 0)
+                        elif current_direction == 'backward':
+                            robot.t_down(15, 0)
+                        elif current_direction == 'left':
+                            robot.turnLeft(8, 0)
+                        elif current_direction == 'right':
+                            robot.turnRight(8, 0)
+                        
+                        # 更新速度状态
+                        current_speed = 15
+                        socketio.emit('status_update', {
+                            'speed': current_speed,
+                            'direction': current_direction
+                        })
+        except Exception as e:
+            print(f"发送电池状态错误: {e}")
+        
+        time.sleep(5)  # 每5秒发送一次电池状态
+
 if __name__ == '__main__':
     try:
         # 设置服务器超时
@@ -323,6 +379,14 @@ if __name__ == '__main__':
         imu_thread.daemon = True
         imu_thread.start()
         
+        # 启动电池监测
+        battery_monitor.start()
+        
+        # 启动电池状态发送线程
+        battery_thread = threading.Thread(target=send_battery_status)
+        battery_thread.daemon = True
+        battery_thread.start()
+        
         # 使用eventlet和优化的性能参数
         print("启动AI智能四驱车服务器，访问 http://localhost:5000")
         socketio.run(app, host='0.0.0.0', port=5000, debug=False,
@@ -336,4 +400,5 @@ if __name__ == '__main__':
         print("关闭服务器并清理资源...")
         camera.stop()
         slam.stop()
+        battery_monitor.stop()  # 停止电池监测
         robot.t_stop(0) 
