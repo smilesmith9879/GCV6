@@ -102,15 +102,32 @@ document.addEventListener('DOMContentLoaded', function() {
         size: 120
     });
     
+    // 在每个遥控器容器中添加状态指示器
+    const carJoystickContainer = document.querySelector('.joystick-container:nth-child(1)');
+    const carStatusIndicator = document.createElement('div');
+    carStatusIndicator.className = 'joystick-status centered';
+    carStatusIndicator.id = 'car-joystick-status';
+    carStatusIndicator.textContent = '已回中';
+    carJoystickContainer.appendChild(carStatusIndicator);
+    
+    // 车辆遥控器事件处理
     carJoystick.on('move', function(evt, data) {
         const x = data.vector.x;
         const y = -data.vector.y;  // Invert Y axis
         
         socket.emit('car_control', { x: x, y: y });
+        
+        // 更新状态指示器
+        document.getElementById('car-joystick-status').textContent = '活动中';
+        document.getElementById('car-joystick-status').className = 'joystick-status active';
     });
     
     carJoystick.on('end', function() {
         socket.emit('car_control', { x: 0, y: 0 });
+        
+        // 更新状态指示器
+        document.getElementById('car-joystick-status').textContent = '已回中';
+        document.getElementById('car-joystick-status').className = 'joystick-status centered';
     });
     
     // Gimbal joystick
@@ -122,15 +139,32 @@ document.addEventListener('DOMContentLoaded', function() {
         size: 120
     });
     
+    // 在每个遥控器容器中添加状态指示器
+    const gimbalJoystickContainer = document.querySelector('.joystick-container:nth-child(2)');
+    const gimbalStatusIndicator = document.createElement('div');
+    gimbalStatusIndicator.className = 'joystick-status centered';
+    gimbalStatusIndicator.id = 'gimbal-joystick-status';
+    gimbalStatusIndicator.textContent = '已回中';
+    gimbalJoystickContainer.appendChild(gimbalStatusIndicator);
+    
+    // 云台遥控器事件处理
     gimbalJoystick.on('move', function(evt, data) {
         const x = data.vector.x;
         const y = -data.vector.y;  // Invert Y axis
         
         socket.emit('gimbal_control', { x: x, y: y });
+        
+        // 更新状态指示器
+        document.getElementById('gimbal-joystick-status').textContent = '活动中';
+        document.getElementById('gimbal-joystick-status').className = 'joystick-status active';
     });
     
     gimbalJoystick.on('end', function() {
         socket.emit('gimbal_control', { x: 0, y: 0 });
+        
+        // 更新状态指示器
+        document.getElementById('gimbal-joystick-status').textContent = '已回中';
+        document.getElementById('gimbal-joystick-status').className = 'joystick-status centered';
     });
     
     // Reset gimbal button

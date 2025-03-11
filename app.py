@@ -146,8 +146,26 @@ def handle_car_control(data):
     x = data.get('x', 0)  # -1 (left) to 1 (right)
     y = data.get('y', 0)  # -1 (down) to 1 (up)
     
-    # Calculate speed (0-100)
-    speed = int(min(100, max(0, abs(y) * 100)))
+    # 检查是否是回中信号 (0,0)
+    if abs(x) < 0.01 and abs(y) < 0.01:
+        # 回中信号直接让车停止，不需要反转方向
+        robot.t_stop(0)
+        current_direction = 'stop'
+        current_speed = 0
+        
+        # 发送状态更新给客户端
+        emit('status_update', {
+            'speed': current_speed,
+            'direction': current_direction
+        }, broadcast=True)
+        return
+    
+    # 不是回中信号，则反转控制方向
+    x = -x
+    y = -y
+    
+    # Calculate speed (0-30) - 调整速度上限为30
+    speed = int(min(30, max(0, abs(y) * 30)))
     
     # Determine direction and movement
     with control_lock:
@@ -193,6 +211,20 @@ def handle_gimbal_control(data):
     # Extract joystick data
     x = data.get('x', 0)  # -1 (left) to 1 (right)
     y = data.get('y', 0)  # -1 (down) to 1 (up)
+    
+    # 检查是否是回中信号 (0,0)
+    if abs(x) < 0.01 and abs(y) < 0.01:
+        # 回中信号意味着停止云台移动，不需要反转方向
+        # 不更新云台位置，只发送当前状态
+        emit('gimbal_update', {
+            'horizontal': current_gimbal_h,
+            'vertical': current_gimbal_v
+        }, broadcast=True)
+        return
+    
+    # 不是回中信号，则反转云台控制方向
+    x = -x
+    y = -y
     
     # Calculate angle changes (scale factor determines sensitivity)
     h_delta = x * 2  # Scale factor for horizontal movement
