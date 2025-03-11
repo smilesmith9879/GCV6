@@ -50,6 +50,27 @@ document.addEventListener('DOMContentLoaded', function() {
         // 更新电池百分比显示
         batteryValue.textContent = `${data.level}%`;
         
+        // 获取电池状态容器
+        const batteryStatusContainer = batteryValue.closest('.battery-status');
+        
+        // 如果硬件不可用，添加标识
+        if ('hardware_available' in data && !data.hardware_available) {
+            batteryValue.textContent += " (模拟)";
+            batteryValue.classList.add('simulated');
+            
+            if (batteryStatusContainer) {
+                batteryStatusContainer.setAttribute('data-simulation-active', 'true');
+                batteryStatusContainer.setAttribute('data-simulation-hint', '使用模拟数据，硬件不可用');
+            }
+        } else {
+            batteryValue.classList.remove('simulated');
+            
+            if (batteryStatusContainer) {
+                batteryStatusContainer.setAttribute('data-simulation-active', 'false');
+                batteryStatusContainer.removeAttribute('data-simulation-hint');
+            }
+        }
+        
         // 更新电池指示器宽度
         batteryLevel.style.width = `${data.level}%`;
         
@@ -82,10 +103,43 @@ document.addEventListener('DOMContentLoaded', function() {
         updateBatteryStatus(data);
     });
     
+    // 接收电池硬件状态通知
+    socket.on('battery_hardware_status', function(data) {
+        console.log('电池硬件状态:', data);
+        if (!data.available) {
+            // 可以在这里添加更多的UI反馈
+            // 例如在电池图标上添加一个模拟标记
+            batteryValue.classList.add('simulated');
+        } else {
+            batteryValue.classList.remove('simulated');
+        }
+    });
+    
     // 接收电池极低警告
     socket.on('battery_critical', function(data) {
         showBatteryAlert(data.message);
     });
+    
+    // 测试用：添加电池重置功能
+    window.resetBattery = function(level = 100) {
+        fetch('/reset_battery', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ level: level })
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('电池重置结果:', data);
+            if (data.status === 'success') {
+                console.log('电池已重置');
+            }
+        })
+        .catch(err => {
+            console.error('重置电池失败:', err);
+        });
+    };
     
     socket.on('connect', function() {
         connectionStatus.textContent = 'Connected';

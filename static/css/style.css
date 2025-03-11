@@ -333,6 +333,39 @@ h1 {
     animation: blink 1s infinite; /* 添加闪烁动画 */
 }
 
+/* 模拟电池样式 */
+#battery-value.simulated {
+    color: #FFD700; /* 金色 */
+    font-style: italic;
+}
+
+/* 模拟电池提示 */
+.battery-status:after {
+    content: '';
+    display: block;
+    position: absolute;
+    bottom: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    color: #888;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.battery-status:hover:after {
+    content: attr(data-simulation-hint);
+    opacity: 1;
+}
+
+.battery-status[data-simulation-active="true"]:after {
+    content: "模拟数据";
+    opacity: 0.7;
+    font-style: italic;
+    color: #FFD700;
+}
+
 @keyframes blink {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }

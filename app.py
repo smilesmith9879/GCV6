@@ -1,6 +1,7 @@
 import eventlet
-# 初始化eventlet，解决并发问题
+# 在任何其他导入之前执行monkey_patch
 eventlet.monkey_patch()
+
 import os
 import time
 import json
@@ -27,12 +28,92 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet',
                    max_http_buffer_size=5*1024*1024)  # 增加缓冲区大小
 
 # Initialize hardware components
-robot = LOBOROBOT()
+try:
+    robot = LOBOROBOT()
+    print("机器人控制器初始化成功")
+except Exception as e:
+    print(f"警告: 机器人控制器初始化失败 - {e}")
+    print("使用模拟控制器...")
+    # 创建一个模拟的机器人控制器
+    class DummyRobot:
+        def __init__(self):
+            print("模拟机器人控制器已初始化")
+            
+        def t_stop(self, *args):
+            print("模拟: 停止")
+            
+        def t_up(self, speed, *args):
+            print(f"模拟: 前进，速度={speed}")
+            
+        def t_down(self, speed, *args):
+            print(f"模拟: 后退，速度={speed}")
+            
+        def turnLeft(self, speed, *args):
+            print(f"模拟: 左转，速度={speed}")
+            
+        def turnRight(self, speed, *args):
+            print(f"模拟: 右转，速度={speed}")
+            
+        def set_servo_angle(self, channel, angle):
+            print(f"模拟: 设置舵机，通道={channel}，角度={angle}")
+            
+        def get_adc_value(self, channel):
+            # 返回模拟的ADC值，模拟满电状态
+            return 850  # 模拟值，大约对应8V电压
+    
+    robot = DummyRobot()
+
 # 降低分辨率到320x240，提高传输性能
-camera = Camera(camera_id=0, width=320, height=240, robot=robot, jpeg_quality=60)
-slam = SLAM(camera=camera, use_imu=True)  # Enable IMU integration with SLAM
+try:
+    camera = Camera(camera_id=0, width=320, height=240, robot=robot, jpeg_quality=60)
+    print("摄像头初始化成功")
+except Exception as e:
+    print(f"警告: 摄像头初始化失败 - {e}")
+    # 创建一个模拟的摄像头
+    from camera import Camera
+    class DummyCamera(Camera):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            print("模拟摄像头已初始化")
+            self.frame = None
+            
+        def start(self):
+            self.running = True
+            self.thread = threading.Thread(target=self._dummy_capture)
+            self.thread.daemon = True
+            self.thread.start()
+            print("模拟摄像头启动")
+            
+        def _dummy_capture(self):
+            # 创建一个带有文字的黑色图像作为模拟视频
+            while self.running:
+                frame = np.zeros((240, 320, 3), dtype=np.uint8)
+                cv2.putText(frame, "Camera Unavailable", (40, 120), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(frame, "Using Simulation", (60, 150), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 165, 255), 2)
+                
+                with self.lock:
+                    self.frame = frame
+                    
+                time.sleep(0.1)
+    
+    camera = DummyCamera(camera_id=0, width=320, height=240, robot=robot, jpeg_quality=60)
+
+try:
+    slam = SLAM(camera=camera, use_imu=True)  # Enable IMU integration with SLAM
+    print("SLAM初始化成功")
+except Exception as e:
+    print(f"警告: SLAM初始化失败 - {e}")
+    # 如果需要，可以创建一个模拟的SLAM系统
+
 # 初始化电池监测模块
-battery_monitor = BatteryMonitor(robot=robot, update_interval=10)
+try:
+    battery_monitor = BatteryMonitor(robot=robot, update_interval=10)
+    print("电池监测模块初始化成功")
+except Exception as e:
+    print(f"警告: 电池监测模块初始化失败 - {e}")
+    battery_monitor = BatteryMonitor(robot=None, update_interval=10)  # 使用无硬件模式
 
 # Global variables for control
 control_lock = threading.Lock()
@@ -45,8 +126,17 @@ current_gimbal_v = 40  # Initial vertical angle
 os.makedirs('static/data', exist_ok=True)
 
 # Start camera and SLAM
-camera.start()
-slam.start()
+try:
+    camera.start()
+    print("摄像头已启动")
+except Exception as e:
+    print(f"启动摄像头失败: {e}")
+
+try:
+    slam.start()
+    print("SLAM系统已启动")
+except Exception as e:
+    print(f"启动SLAM系统失败: {e}")
 
 @app.route('/')
 def index():
@@ -327,42 +417,75 @@ def send_battery_status():
     print("电池状态监测线程已启动")
     while True:
         try:
+            # 获取电池状态
             status = battery_monitor.get_battery_status()
             socketio.emit('battery_update', status)
+            
+            # 检查硬件可用性并通知前端
+            if 'hardware_available' in status and not status['hardware_available']:
+                socketio.emit('battery_hardware_status', {
+                    'available': False,
+                    'message': '电池监测硬件不可用，使用模拟数据'
+                })
             
             # 如果电量极低，发送警告
             if battery_monitor.is_critical_battery():
                 socketio.emit('battery_critical', {
-                    'message': '电池电量极低，请尽快充电!',
+                    'message': f'电池电量极低 ({status["level"]}%)，请尽快充电!',
                     'level': status['level']
                 })
                 
                 # 如果电量过低，自动减速以节省电量
                 global current_speed
                 if current_speed > 15:  # 如果当前速度高于15
-                    with control_lock:
-                        robot.t_stop(0)  # 暂时停止
-                        time.sleep(0.5)
-                        # 以较低的速度继续当前方向
-                        if current_direction == 'forward':
-                            robot.t_up(15, 0)
-                        elif current_direction == 'backward':
-                            robot.t_down(15, 0)
-                        elif current_direction == 'left':
-                            robot.turnLeft(8, 0)
-                        elif current_direction == 'right':
-                            robot.turnRight(8, 0)
-                        
-                        # 更新速度状态
-                        current_speed = 15
-                        socketio.emit('status_update', {
-                            'speed': current_speed,
-                            'direction': current_direction
-                        })
+                    try:
+                        with control_lock:
+                            robot.t_stop(0)  # 暂时停止
+                            time.sleep(0.5)
+                            # 以较低的速度继续当前方向
+                            if current_direction == 'forward':
+                                robot.t_up(15, 0)
+                            elif current_direction == 'backward':
+                                robot.t_down(15, 0)
+                            elif current_direction == 'left':
+                                robot.turnLeft(8, 0)
+                            elif current_direction == 'right':
+                                robot.turnRight(8, 0)
+                            
+                            # 更新速度状态
+                            current_speed = 15
+                            socketio.emit('status_update', {
+                                'speed': current_speed,
+                                'direction': current_direction
+                            })
+                    except Exception as e:
+                        print(f"低电量自动减速失败: {e}")
         except Exception as e:
             print(f"发送电池状态错误: {e}")
+            # 发生异常时尝试恢复
+            try:
+                socketio.emit('battery_update', {
+                    'level': 100,
+                    'voltage': 8.4,
+                    'status': 'normal',
+                    'hardware_available': False,
+                    'error': str(e)
+                })
+            except:
+                pass  # 忽略二次错误
         
         time.sleep(5)  # 每5秒发送一次电池状态
+
+# 添加电池状态重置接口，用于测试或充电后
+@app.route('/reset_battery', methods=['POST'])
+def reset_battery():
+    """重置电池状态（充电后或测试用）"""
+    try:
+        level = request.json.get('level', 100)
+        battery_monitor.reset_battery(level=level)
+        return jsonify({'status': 'success', 'message': f'电池状态已重置为{level}%'})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)})
 
 if __name__ == '__main__':
     try:
@@ -384,9 +507,9 @@ if __name__ == '__main__':
         battery_monitor.start()
         
         # 启动电池状态发送线程
-        battery_thread = threading.Thread(target=send_battery_status)
-        battery_thread.daemon = True
-        battery_thread.start()
+        #battery_thread = threading.Thread(target=send_battery_status)
+        #battery_thread.daemon = True
+        #battery_thread.start()
         
         # 使用eventlet和优化的性能参数
         print("启动AI智能四驱车服务器，访问 http://localhost:5000")
