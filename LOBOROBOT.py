@@ -11,7 +11,7 @@
 import time
 import math
 import smbus2 as smbus
-from gpiozero import LED,MCP3008
+from gpiozero import LED
 
 Dir = [
     'forward',
