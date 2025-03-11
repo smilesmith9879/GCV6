@@ -44,12 +44,6 @@ class PCA9685:
       print("Reseting PCA9685")
     self.write(self.__MODE1, 0x00)
 
-    # 初始化ADC
-    self.adc = MCP3008(channel=0)  # 假设电池电压接到通道 0
-  def get_adc_value(self):
-    return self.adc.value * 3.3  # 返回 0-3.3V 的电压值
-  def cleanup(self):
-    self.adc.close()
 
   def write(self, reg, value):
     "Writes an 8-bit value to the specified register/address"

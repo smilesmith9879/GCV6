@@ -15,7 +15,6 @@ from LOBOROBOT import LOBOROBOT
 from camera import Camera
 from slam import SLAM
 from imu import MPU6050  # Import the MPU6050 class
-from battery import BatteryMonitor  # Import the BatteryMonitor class
 
 
 
@@ -106,14 +105,6 @@ try:
 except Exception as e:
     print(f"警告: SLAM初始化失败 - {e}")
     # 如果需要，可以创建一个模拟的SLAM系统
-
-# 初始化电池监测模块
-try:
-    battery_monitor = BatteryMonitor(robot=robot, update_interval=10)
-    print("电池监测模块初始化成功")
-except Exception as e:
-    print(f"警告: 电池监测模块初始化失败 - {e}")
-    battery_monitor = BatteryMonitor(robot=None, update_interval=10)  # 使用无硬件模式
 
 # Global variables for control
 control_lock = threading.Lock()
@@ -218,12 +209,6 @@ def imu_status():
     return jsonify({
         'available': slam.imu_available
     })
-
-@app.route('/battery_status')
-def battery_status():
-    """返回电池状态信息的API端点"""
-    status = battery_monitor.get_battery_status()
-    return jsonify(status)
 
 @app.route('/reset_slam', methods=['POST'])
 def reset_slam():
@@ -411,82 +396,6 @@ def send_imu_data():
         
         time.sleep(0.2)  # Send 5 times per second
 
-# 添加电池状态更新函数
-def send_battery_status():
-    """定期发送电池状态到客户端"""
-    print("电池状态监测线程已启动")
-    while True:
-        try:
-            # 获取电池状态
-            status = battery_monitor.get_battery_status()
-            socketio.emit('battery_update', status)
-            
-            # 检查硬件可用性并通知前端
-            if 'hardware_available' in status and not status['hardware_available']:
-                socketio.emit('battery_hardware_status', {
-                    'available': False,
-                    'message': '电池监测硬件不可用，使用模拟数据'
-                })
-            
-            # 如果电量极低，发送警告
-            if battery_monitor.is_critical_battery():
-                socketio.emit('battery_critical', {
-                    'message': f'电池电量极低 ({status["level"]}%)，请尽快充电!',
-                    'level': status['level']
-                })
-                
-                # 如果电量过低，自动减速以节省电量
-                global current_speed
-                if current_speed > 15:  # 如果当前速度高于15
-                    try:
-                        with control_lock:
-                            robot.t_stop(0)  # 暂时停止
-                            time.sleep(0.5)
-                            # 以较低的速度继续当前方向
-                            if current_direction == 'forward':
-                                robot.t_up(15, 0)
-                            elif current_direction == 'backward':
-                                robot.t_down(15, 0)
-                            elif current_direction == 'left':
-                                robot.turnLeft(8, 0)
-                            elif current_direction == 'right':
-                                robot.turnRight(8, 0)
-                            
-                            # 更新速度状态
-                            current_speed = 15
-                            socketio.emit('status_update', {
-                                'speed': current_speed,
-                                'direction': current_direction
-                            })
-                    except Exception as e:
-                        print(f"低电量自动减速失败: {e}")
-        except Exception as e:
-            print(f"发送电池状态错误: {e}")
-            # 发生异常时尝试恢复
-            try:
-                socketio.emit('battery_update', {
-                    'level': 100,
-                    'voltage': 8.4,
-                    'status': 'normal',
-                    'hardware_available': False,
-                    'error': str(e)
-                })
-            except:
-                pass  # 忽略二次错误
-        
-        time.sleep(5)  # 每5秒发送一次电池状态
-
-# 添加电池状态重置接口，用于测试或充电后
-@app.route('/reset_battery', methods=['POST'])
-def reset_battery():
-    """重置电池状态（充电后或测试用）"""
-    try:
-        level = request.json.get('level', 100)
-        battery_monitor.reset_battery(level=level)
-        return jsonify({'status': 'success', 'message': f'电池状态已重置为{level}%'})
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)})
-
 if __name__ == '__main__':
     try:
         # 设置服务器超时
@@ -503,14 +412,6 @@ if __name__ == '__main__':
         imu_thread.daemon = True
         imu_thread.start()
         
-        # 启动电池监测
-        battery_monitor.start()
-        
-        # 启动电池状态发送线程
-        #battery_thread = threading.Thread(target=send_battery_status)
-        #battery_thread.daemon = True
-        #battery_thread.start()
-        
         # 使用eventlet和优化的性能参数
         print("启动AI智能四驱车服务器，访问 http://localhost:5000")
         socketio.run(app, host='0.0.0.0', port=5000, debug=False,
@@ -524,5 +425,4 @@ if __name__ == '__main__':
         print("关闭服务器并清理资源...")
         camera.stop()
         slam.stop()
-        battery_monitor.stop()  # 停止电池监测
         robot.t_stop(0) 
