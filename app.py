@@ -1,3 +1,6 @@
+import eventlet
+# 初始化eventlet，解决并发问题
+eventlet.monkey_patch()
 import os
 import time
 import json
@@ -6,7 +9,6 @@ from flask import Flask, render_template, Response, jsonify, request
 from flask_socketio import SocketIO, emit
 import cv2
 import numpy as np
-import eventlet
 
 from LOBOROBOT import LOBOROBOT
 from camera import Camera
@@ -14,8 +16,7 @@ from slam import SLAM
 from imu import MPU6050  # Import the MPU6050 class
 from battery import BatteryMonitor  # Import the BatteryMonitor class
 
-# 初始化eventlet，解决并发问题
-eventlet.monkey_patch()
+
 
 # Initialize Flask app
 app = Flask(__name__)
