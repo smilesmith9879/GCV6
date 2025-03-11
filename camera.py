@@ -14,7 +14,9 @@ class Camera:
         self.lock = threading.Lock()
         
         # Initialize the robot for gimbal control
-        self.robot = LOBOROBOT()
+        #self.robot = LOBOROBOT()
+        # 使用传入的 robot 实例，若未提供则创建新实例
+        self.robot = robot if robot is not None else LOBOROBOT()
         
         # Gimbal settings as per project description
         self.horizontal_channel = 9  # PWM9 for horizontal control

@@ -200,4 +200,48 @@ h1 {
         right: 10px;
         z-index: 100;
     }
+}
+
+/* Add styles for the IMU data container */
+.imu-data-container {
+    background-color: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+    padding: 10px;
+    margin-top: 15px;
+    color: white;
+}
+
+.imu-data-container h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.2em;
+    color: #4CAF50;
+}
+
+.imu-data {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+
+.imu-item {
+    flex-basis: 30%;
+    margin-bottom: 8px;
+}
+
+.imu-item .label {
+    font-weight: bold;
+    color: #90CAF9;
+    margin-right: 5px;
+}
+
+/* Media query for smaller screens */
+@media (max-width: 768px) {
+    .imu-data {
+        flex-direction: column;
+    }
+    
+    .imu-item {
+        flex-basis: 100%;
+    }
 } 

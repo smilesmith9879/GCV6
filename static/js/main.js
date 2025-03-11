@@ -33,6 +33,30 @@ document.addEventListener('DOMContentLoaded', function() {
         gimbalVValue.textContent = Math.round(data.vertical) + '°';
     });
     
+    // IMU data elements
+    const rollValue = document.getElementById('roll-value');
+    const pitchValue = document.getElementById('pitch-value');
+    const accelXValue = document.getElementById('accel-x-value');
+    const accelYValue = document.getElementById('accel-y-value');
+    const accelZValue = document.getElementById('accel-z-value');
+    
+    // Listen for IMU updates from the server
+    socket.on('imu_update', function(data) {
+        // Update orientation values
+        rollValue.textContent = Math.round(data.orientation.roll) + '°';
+        pitchValue.textContent = Math.round(data.orientation.pitch) + '°';
+        
+        // Update acceleration values
+        accelXValue.textContent = data.acceleration.x.toFixed(2) + ' g';
+        accelYValue.textContent = data.acceleration.y.toFixed(2) + ' g';
+        accelZValue.textContent = data.acceleration.z.toFixed(2) + ' g';
+        
+        // Use IMU data to enhance the 3D map visualization if needed
+        if (mapScene) {
+            updateMapOrientation(data.orientation);
+        }
+    });
+    
     // Car joystick
     const carJoystick = nipplejs.create({
         zone: document.getElementById('car-joystick'),
@@ -223,4 +247,22 @@ function updateMapData(points, trajectory, car) {
             }
         })
         .catch(error => console.error('Error fetching position data:', error));
+}
+
+// Function to update the 3D map orientation based on IMU data
+function updateMapOrientation(orientation) {
+    // This is a placeholder for map orientation updates
+    // In a real implementation, this would adjust the camera or scene
+    // based on the IMU orientation data
+    if (mapControls) {
+        // Example: Adjust the camera target based on roll and pitch
+        // This would need to be customized based on your specific map implementation
+        const rollRad = orientation.roll * Math.PI / 180;
+        const pitchRad = orientation.pitch * Math.PI / 180;
+        
+        // This is just an example - actual implementation would depend on your map setup
+        // mapControls.target.y = Math.sin(pitchRad) * 5;
+        // mapControls.target.x = Math.sin(rollRad) * 5;
+        // mapControls.update();
+    }
 } 

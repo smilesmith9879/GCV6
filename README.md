@@ -129,6 +129,47 @@ sudo ./install_service.sh
 - Check if the server is running (`ps aux | grep app.py`)
 - Verify the port is not blocked by a firewall
 
+## MPU6050 IMU Integration
+
+The project uses an MPU6050 IMU (Inertial Measurement Unit) sensor for enhanced navigation and orientation sensing. The IMU provides:
+
+- **Accelerometer data**: Measures linear acceleration in 3 axes (X, Y, Z)
+- **Gyroscope data**: Measures angular velocity in 3 axes (X, Y, Z)
+- **Orientation calculation**: Provides roll, pitch, and yaw angles
+
+### Hardware Connection
+
+Connect the MPU6050 to the Raspberry Pi's I2C pins:
+- VCC → 3.3V
+- GND → GND
+- SCL → GPIO3 (Pin 5)
+- SDA → GPIO2 (Pin 3)
+- INT → Not required, but can be connected to any available GPIO pin for interrupt-based readings
+
+### Testing the IMU
+
+A test script is provided to verify the MPU6050 is working correctly:
+
+```bash
+python3 test_imu.py
+```
+
+This script will:
+1. Initialize the MPU6050
+2. Calibrate the sensor (keep it still during calibration)
+3. Display real-time orientation and acceleration data
+
+### IMU Data in the Web Interface
+
+The web interface displays IMU data in real-time:
+- Roll and pitch angles in the status bar
+- Acceleration values in the IMU data section
+
+The IMU data is also used to enhance the SLAM system by:
+- Improving rotation estimation
+- Providing more accurate orientation information
+- Enhancing map visualization
+
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details. 

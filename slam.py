@@ -4,9 +4,10 @@ import threading
 import time
 import os
 import json
+from imu import MPU6050  # Import the MPU6050 class
 
 class SLAM:
-    def __init__(self, camera=None):
+    def __init__(self, camera=None, use_imu=True):
         self.camera = camera
         self.running = False
         self.lock = threading.Lock()
@@ -29,6 +30,17 @@ class SLAM:
         
         # For trajectory tracking
         self.trajectory = []
+        
+        # Initialize IMU if available
+        self.use_imu = use_imu
+        self.imu = None
+        if self.use_imu:
+            try:
+                self.imu = MPU6050()
+                print("IMU initialized successfully")
+            except Exception as e:
+                print(f"Failed to initialize IMU: {e}")
+                self.use_imu = False
     
     def start(self):
         """Start the SLAM processing thread"""
@@ -37,6 +49,17 @@ class SLAM:
         
         if self.camera is None:
             raise ValueError("Camera must be set before starting SLAM")
+        
+        # Start IMU if available
+        if self.use_imu and self.imu:
+            try:
+                print("Calibrating IMU...")
+                self.imu.calibrate()
+                self.imu.start()
+                print("IMU started successfully")
+            except Exception as e:
+                print(f"Failed to start IMU: {e}")
+                self.use_imu = False
         
         self.running = True
         self.thread = threading.Thread(target=self._process_loop)
@@ -48,6 +71,10 @@ class SLAM:
         self.running = False
         if self.thread:
             self.thread.join()
+        
+        # Stop IMU if it was started
+        if self.use_imu and self.imu:
+            self.imu.stop()
         
         # Save the final map data
         self._save_map_data()
@@ -65,6 +92,12 @@ class SLAM:
             
             # Process the frame with ORB-SLAM (simplified version)
             self._process_frame(frame)
+            
+            # Update orientation from IMU if available
+            if self.use_imu and self.imu:
+                roll, pitch, yaw = self.imu.get_orientation()
+                with self.lock:
+                    self.current_orientation = [roll, pitch, yaw]
             
             # Sleep to reduce CPU usage
             time.sleep(0.05)
@@ -105,11 +138,37 @@ class SLAM:
                         # Extract rotation (simplified)
                         da = np.arctan2(M[1, 0], M[0, 0])
                         
+                        # Get IMU data if available
+                        imu_orientation = None
+                        if self.use_imu and self.imu:
+                            imu_orientation = self.imu.get_orientation()
+                        
                         # Update position (simplified)
                         with self.lock:
-                            self.current_position[0] += dx * 0.01
-                            self.current_position[1] += dy * 0.01
-                            self.current_orientation[2] += da
+                            # If IMU is available, use it to improve motion estimation
+                            if imu_orientation:
+                                roll, pitch, yaw = imu_orientation
+                                
+                                # Use IMU yaw to improve rotation estimation
+                                # This is a simplified fusion - a real implementation would use a Kalman filter
+                                da = 0.7 * da + 0.3 * (np.radians(yaw) - np.radians(self.current_orientation[2]))
+                                
+                                # Update orientation
+                                self.current_orientation = [roll, pitch, np.degrees(np.radians(self.current_orientation[2]) + da)]
+                            else:
+                                # Without IMU, just use visual estimation
+                                self.current_orientation[2] += np.degrees(da)
+                            
+                            # Calculate movement in world coordinates based on current orientation
+                            angle_rad = np.radians(self.current_orientation[2])
+                            dx_world = dx * np.cos(angle_rad) - dy * np.sin(angle_rad)
+                            dy_world = dx * np.sin(angle_rad) + dy * np.cos(angle_rad)
+                            
+                            # Scale factor (adjust based on your environment)
+                            scale = 0.01
+                            
+                            self.current_position[0] += dx_world * scale
+                            self.current_position[1] += dy_world * scale
                             
                             # Add to trajectory
                             self.trajectory.append(self.current_position.copy())
@@ -173,4 +232,11 @@ class SLAM:
             self.trajectory = []
             self.prev_frame = None
             self.prev_kp = None
-            self.prev_des = None 
+            self.prev_des = None
+            
+            # Reset IMU yaw if available
+            if self.use_imu and self.imu:
+                # We can't reset the IMU's internal values directly,
+                # but we can note the current values and apply an offset
+                _, _, yaw = self.imu.get_orientation()
+                self.imu_yaw_offset = yaw  # Store the current yaw as an offset 
