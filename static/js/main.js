@@ -38,11 +38,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000); // 每3秒检测一次
     }
     
+
+ 
+     
+    
     socket.on('connect', function() {
         connectionStatus.textContent = 'Connected';
         connectionStatus.classList.add('connected');
         startHeartbeat(); // 连接成功后启动心跳检测
         console.log('已连接到服务器');
+        
+        // 连接成功后立即请求电池状态
+        fetch('/battery_status')
+            .then(response => response.json())
+            .then(data => {
+                updateBatteryStatus(data);
+            })
+            .catch(err => {
+                console.error('获取电池状态失败:', err);
+            });
     });
     
     socket.on('disconnect', function() {
@@ -90,325 +104,310 @@ document.addEventListener('DOMContentLoaded', function() {
     });
     
     socket.on('gimbal_update', function(data) {
-        gimbalHValue.textContent = `${data.horizontal}°`;
-        gimbalVValue.textContent = `${data.vertical}°`;
+        gimbalHValue.textContent = Math.round(data.horizontal) + '°';
+        gimbalVValue.textContent = Math.round(data.vertical) + '°';
     });
     
-    // IMU status handling
+    // IMU data elements
     const rollValue = document.getElementById('roll-value');
     const pitchValue = document.getElementById('pitch-value');
     const accelXValue = document.getElementById('accel-x-value');
     const accelYValue = document.getElementById('accel-y-value');
     const accelZValue = document.getElementById('accel-z-value');
+    const imuDataContainer = document.querySelector('.imu-data-container');
     
+    // Add IMU status indicator to the status bar
+    const statusBar = document.querySelector('.status-bar');
+    const imuStatusItem = document.createElement('div');
+    imuStatusItem.className = 'status-item';
+    imuStatusItem.innerHTML = '<span class="label">IMU:</span><span id="imu-status">Checking...</span>';
+    statusBar.appendChild(imuStatusItem);
+    const imuStatus = document.getElementById('imu-status');
+    
+    // Function to update IMU status display
     function updateIMUStatus(available) {
-        const imuContainer = document.querySelector('.imu-data-container');
-        if (imuContainer) {
-            if (available) {
-                imuContainer.classList.add('connected');
-                imuContainer.classList.remove('disconnected');
-            } else {
-                imuContainer.classList.remove('connected');
-                imuContainer.classList.add('disconnected');
-                
-                // Reset IMU values
-                rollValue.textContent = "N/A";
-                pitchValue.textContent = "N/A";
-                accelXValue.textContent = "N/A";
-                accelYValue.textContent = "N/A";
-                accelZValue.textContent = "N/A";
-            }
+        if (available) {
+            imuStatus.textContent = 'Connected';
+            imuStatus.className = 'connected';
+            imuDataContainer.style.display = 'block';
+        } else {
+            imuStatus.textContent = 'Not Available';
+            imuStatus.className = 'disconnected';
+            imuDataContainer.style.display = 'none';
+            
+            // Reset orientation values in status bar
+            rollValue.textContent = 'N/A';
+            pitchValue.textContent = 'N/A';
         }
     }
     
+    // Check IMU status on connection
+    socket.on('status', function(data) {
+        updateIMUStatus(data.imu_available);
+    });
+    
+    // Listen for IMU updates from the server
     socket.on('imu_update', function(data) {
+        // Update IMU status
         updateIMUStatus(data.available);
         
         if (data.available) {
-            rollValue.textContent = `${data.orientation.roll}°`;
-            pitchValue.textContent = `${data.orientation.pitch}°`;
-            accelXValue.textContent = `${data.acceleration.x} g`;
-            accelYValue.textContent = `${data.acceleration.y} g`;
-            accelZValue.textContent = `${data.acceleration.z} g`;
+            // Update orientation values
+            rollValue.textContent = Math.round(data.orientation.roll) + '°';
+            pitchValue.textContent = Math.round(data.orientation.pitch) + '°';
+            
+            // Update acceleration values
+            accelXValue.textContent = data.acceleration.x.toFixed(2) + ' g';
+            accelYValue.textContent = data.acceleration.y.toFixed(2) + ' g';
+            accelZValue.textContent = data.acceleration.z.toFixed(2) + ' g';
+            
+            // Use IMU data to enhance the 3D map visualization if needed
+            if (mapScene) {
+                updateMapOrientation(data.orientation);
+            }
         }
     });
     
-    // Setup car control joystick
-    const carJoystickContainer = document.getElementById('car-joystick');
-    if (carJoystickContainer) {
-        const carJoystick = nipplejs.create({
-            zone: carJoystickContainer,
-            mode: 'static',
-            position: { left: '50%', top: '50%' },
-            color: 'blue',
-            size: 120
-        });
-        
-        const carJoystickStatus = document.createElement('div');
-        carJoystickStatus.className = 'joystick-status centered';
-        carJoystickStatus.textContent = '已回中';
-        carJoystickContainer.parentNode.appendChild(carJoystickStatus);
-        
-        // Handle joystick movement
-        carJoystick.on('move', function(evt, data) {
-            const x = data.vector.x;
-            const y = data.vector.y;
-            
-            // Update joystick status
-            carJoystickStatus.textContent = '活动中';
-            carJoystickStatus.classList.remove('centered');
-            carJoystickStatus.classList.add('active');
-            
-            socket.emit('car_control', { x, y });
-        });
-        
-        // Handle joystick end
-        carJoystick.on('end', function() {
-            socket.emit('car_control', { x: 0, y: 0 });
-            
-            // Update joystick status
-            carJoystickStatus.textContent = '已回中';
-            carJoystickStatus.classList.add('centered');
-            carJoystickStatus.classList.remove('active');
-        });
-    }
+    // Car joystick
+    const carJoystick = nipplejs.create({
+        zone: document.getElementById('car-joystick'),
+        mode: 'static',
+        position: { left: '50%', top: '50%' },
+        color: 'blue',
+        size: 120
+    });
     
-    // Setup gimbal control joystick
-    const gimbalJoystickContainer = document.getElementById('gimbal-joystick');
-    if (gimbalJoystickContainer) {
-        const gimbalJoystick = nipplejs.create({
-            zone: gimbalJoystickContainer,
-            mode: 'static',
-            position: { left: '50%', top: '50%' },
-            color: 'green',
-            size: 120
-        });
+    // 在每个遥控器容器中添加状态指示器
+    const carJoystickContainer = document.querySelector('.joystick-container:nth-child(1)');
+    const carStatusIndicator = document.createElement('div');
+    carStatusIndicator.className = 'joystick-status centered';
+    carStatusIndicator.id = 'car-joystick-status';
+    carStatusIndicator.textContent = '已回中';
+    carJoystickContainer.appendChild(carStatusIndicator);
+    
+    // 车辆遥控器事件处理
+    carJoystick.on('move', function(evt, data) {
+        const x = data.vector.x;
+        const y = -data.vector.y;  // Invert Y axis
         
-        const gimbalJoystickStatus = document.createElement('div');
-        gimbalJoystickStatus.className = 'joystick-status centered';
-        gimbalJoystickStatus.textContent = '已回中';
-        gimbalJoystickContainer.parentNode.appendChild(gimbalJoystickStatus);
+        socket.emit('car_control', { x: x, y: y });
         
-        // Handle joystick movement
-        gimbalJoystick.on('move', function(evt, data) {
-            const x = data.vector.x;
-            const y = data.vector.y;
-            
-            // Update joystick status
-            gimbalJoystickStatus.textContent = '活动中';
-            gimbalJoystickStatus.classList.remove('centered');
-            gimbalJoystickStatus.classList.add('active');
-            
-            socket.emit('gimbal_control', { x, y });
-        });
+        // 更新状态指示器
+        document.getElementById('car-joystick-status').textContent = '活动中';
+        document.getElementById('car-joystick-status').className = 'joystick-status active';
+    });
+    
+    carJoystick.on('end', function() {
+        socket.emit('car_control', { x: 0, y: 0 });
         
-        // Handle joystick end
-        gimbalJoystick.on('end', function() {
-            socket.emit('gimbal_control', { x: 0, y: 0 });
-            
-            // Update joystick status
-            gimbalJoystickStatus.textContent = '已回中';
-            gimbalJoystickStatus.classList.add('centered');
-            gimbalJoystickStatus.classList.remove('active');
-        });
-    }
+        // 更新状态指示器
+        document.getElementById('car-joystick-status').textContent = '已回中';
+        document.getElementById('car-joystick-status').className = 'joystick-status centered';
+    });
     
-    // Setup reset button for gimbal
-    const resetGimbalBtn = document.getElementById('reset-gimbal-btn');
-    if (resetGimbalBtn) {
-        resetGimbalBtn.addEventListener('click', function() {
-            fetch('/reset_gimbal', {
-                method: 'POST'
-            }).then(response => response.json())
-              .then(data => console.log('Gimbal reset:', data))
-              .catch(error => console.error('Error resetting gimbal:', error));
-        });
-    }
+    // Gimbal joystick
+    const gimbalJoystick = nipplejs.create({
+        zone: document.getElementById('gimbal-joystick'),
+        mode: 'static',
+        position: { left: '50%', top: '50%' },
+        color: 'red',
+        size: 120
+    });
     
-    // Setup reset button for map
-    const resetMapBtn = document.getElementById('reset-map-btn');
-    if (resetMapBtn) {
-        resetMapBtn.addEventListener('click', function() {
-            fetch('/reset_slam', {
-                method: 'POST'
-            }).then(response => response.json())
-              .then(data => console.log('SLAM reset:', data))
-              .catch(error => console.error('Error resetting SLAM:', error));
-        });
-    }
+    // 在每个遥控器容器中添加状态指示器
+    const gimbalJoystickContainer = document.querySelector('.joystick-container:nth-child(2)');
+    const gimbalStatusIndicator = document.createElement('div');
+    gimbalStatusIndicator.className = 'joystick-status centered';
+    gimbalStatusIndicator.id = 'gimbal-joystick-status';
+    gimbalStatusIndicator.textContent = '已回中';
+    gimbalJoystickContainer.appendChild(gimbalStatusIndicator);
     
-    // Setup fullscreen button
-    const fullscreenBtn = document.getElementById('fullscreen-btn');
-    const container = document.querySelector('.container');
-    if (fullscreenBtn && container) {
-        fullscreenBtn.addEventListener('click', function() {
-            container.classList.toggle('fullscreen-mode');
-            
-            if (container.classList.contains('fullscreen-mode')) {
-                fullscreenBtn.textContent = 'Exit Fullscreen';
-            } else {
-                fullscreenBtn.textContent = 'Fullscreen';
-            }
-        });
-    }
+    // 云台遥控器事件处理
+    gimbalJoystick.on('move', function(evt, data) {
+        const x = data.vector.x;
+        const y = -data.vector.y;  // Invert Y axis
+        
+        socket.emit('gimbal_control', { x: x, y: y });
+        
+        // 更新状态指示器
+        document.getElementById('gimbal-joystick-status').textContent = '活动中';
+        document.getElementById('gimbal-joystick-status').className = 'joystick-status active';
+    });
     
-    // Initialize the 3D map
+    gimbalJoystick.on('end', function() {
+        socket.emit('gimbal_control', { x: 0, y: 0 });
+        
+        // 更新状态指示器
+        document.getElementById('gimbal-joystick-status').textContent = '已回中';
+        document.getElementById('gimbal-joystick-status').className = 'joystick-status centered';
+    });
+    
+    // Reset gimbal button
+    document.getElementById('reset-gimbal-btn').addEventListener('click', function() {
+        fetch('/reset_gimbal', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => console.log('Gimbal reset:', data));
+    });
+    
+    // Reset map button
+    document.getElementById('reset-map-btn').addEventListener('click', function() {
+        fetch('/reset_slam', { method: 'POST' })
+            .then(response => response.json())
+            .then(data => console.log('Map reset:', data));
+    });
+    
+    // Fullscreen button
+    document.getElementById('fullscreen-btn').addEventListener('click', function() {
+        const videoContainer = document.querySelector('.video-container');
+        
+        if (!document.fullscreenElement) {
+            videoContainer.requestFullscreen().catch(err => {
+                console.error(`Error attempting to enable fullscreen: ${err.message}`);
+            });
+        } else {
+            document.exitFullscreen();
+        }
+    });
+    
+    // Initialize 3D map
     initMap();
 });
 
-// 3D Map functionality
+// Initialize 3D map with Three.js
 function initMap() {
-    const mapContainer = document.getElementById('map-3d');
-    if (!mapContainer) return;
+    const container = document.getElementById('map-3d');
     
-    // Setup Three.js scene
+    // Create scene
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, mapContainer.clientWidth / mapContainer.clientHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    scene.background = new THREE.Color(0x111111);
     
-    renderer.setSize(mapContainer.clientWidth, mapContainer.clientHeight);
-    renderer.setClearColor(0x000000, 0.3);
-    mapContainer.appendChild(renderer.domElement);
+    // Create camera
+    const camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(0, 5, 10);
+    camera.lookAt(0, 0, 0);
     
-    // Add lights
+    // Create renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    container.appendChild(renderer.domElement);
+    
+    // Add grid
+    const gridHelper = new THREE.GridHelper(20, 20);
+    scene.add(gridHelper);
+    
+    // Add ambient light
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
     scene.add(ambientLight);
     
-    const pointLight = new THREE.PointLight(0xffffff, 0.8);
-    pointLight.position.set(5, 5, 5);
-    scene.add(pointLight);
+    // Add directional light
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+    directionalLight.position.set(0, 10, 10);
+    scene.add(directionalLight);
     
-    // Add grid for reference
-    const gridHelper = new THREE.GridHelper(20, 20, 0x888888, 0x444444);
-    scene.add(gridHelper);
-    
-    // Car representation
-    const carGeometry = new THREE.BoxGeometry(0.5, 0.2, 0.7);
-    const carMaterial = new THREE.MeshLambertMaterial({ color: 0x00aaff });
+    // Create car representation
+    const carGeometry = new THREE.BoxGeometry(1, 0.5, 2);
+    const carMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
     const car = new THREE.Mesh(carGeometry, carMaterial);
-    car.position.y = 0.1;
     scene.add(car);
     
-    // Setup camera position
-    camera.position.set(5, 5, 5);
-    camera.lookAt(car.position);
-    
-    // Map points
+    // Points for the map
     const pointsGeometry = new THREE.BufferGeometry();
-    const pointsMaterial = new THREE.PointsMaterial({ color: 0xffff00, size: 0.1 });
+    const pointsMaterial = new THREE.PointsMaterial({ color: 0xff0000, size: 0.1 });
     const points = new THREE.Points(pointsGeometry, pointsMaterial);
     scene.add(points);
     
-    // Trajectory
+    // Trajectory line
     const trajectoryGeometry = new THREE.BufferGeometry();
-    const trajectoryMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    const trajectoryMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff });
     const trajectory = new THREE.Line(trajectoryGeometry, trajectoryMaterial);
     scene.add(trajectory);
+    
+    // Handle window resize
+    window.addEventListener('resize', function() {
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(container.clientWidth, container.clientHeight);
+    });
     
     // Animation loop
     function animate() {
         requestAnimationFrame(animate);
+        
+        // Update map data
+        updateMapData(points, trajectory, car);
+        
+        // Render scene
         renderer.render(scene, camera);
     }
     
     animate();
-    
-    // Handle window resize
-    window.addEventListener('resize', function() {
-        if (mapContainer.clientWidth > 0 && mapContainer.clientHeight > 0) {
-            camera.aspect = mapContainer.clientWidth / mapContainer.clientHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(mapContainer.clientWidth, mapContainer.clientHeight);
-        }
-    });
-    
-    // Update map data periodically
-    setInterval(function() {
-        fetch('/map_data')
-            .then(response => response.json())
-            .then(data => updateMapData(data.points, data.trajectory, data.position))
-            .catch(error => console.error('Error fetching map data:', error));
-    }, 1000);
-    
-    // Update car orientation from IMU data
-    setInterval(function() {
-        fetch('/position')
-            .then(response => response.json())
-            .then(data => updateMapOrientation(data))
-            .catch(error => console.error('Error fetching position data:', error));
-    }, 200);
 }
 
+// Update map data from server
 function updateMapData(points, trajectory, car) {
-    const mapContainer = document.getElementById('map-3d');
-    if (!mapContainer) return;
+    fetch('/map_data')
+        .then(response => response.json())
+        .then(data => {
+            // Update points
+            if (data.points && data.points.length > 0) {
+                const positions = new Float32Array(data.points.length * 3);
+                
+                for (let i = 0; i < data.points.length; i++) {
+                    positions[i * 3] = data.points[i][0];
+                    positions[i * 3 + 1] = data.points[i][2];  // Y is up in Three.js
+                    positions[i * 3 + 2] = data.points[i][1];
+                }
+                
+                points.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                points.geometry.attributes.position.needsUpdate = true;
+            }
+            
+            // Update trajectory
+            if (data.trajectory && data.trajectory.length > 0) {
+                const positions = new Float32Array(data.trajectory.length * 3);
+                
+                for (let i = 0; i < data.trajectory.length; i++) {
+                    positions[i * 3] = data.trajectory[i][0];
+                    positions[i * 3 + 1] = data.trajectory[i][2];  // Y is up in Three.js
+                    positions[i * 3 + 2] = data.trajectory[i][1];
+                }
+                
+                trajectory.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                trajectory.geometry.attributes.position.needsUpdate = true;
+                
+                // Update car position to the last trajectory point
+                const lastPoint = data.trajectory[data.trajectory.length - 1];
+                car.position.set(lastPoint[0], lastPoint[2], lastPoint[1]);
+            }
+        })
+        .catch(error => console.error('Error fetching map data:', error));
     
-    const scene = mapContainer.querySelector('canvas')?.['__three_scene'];
-    if (!scene) return;
-    
-    // Update map points
-    const pointsObject = scene.children.find(child => child instanceof THREE.Points);
-    if (pointsObject && points && points.length > 0) {
-        const positions = new Float32Array(points.length * 3);
-        
-        for (let i = 0; i < points.length; i++) {
-            positions[i * 3] = points[i].x;
-            positions[i * 3 + 1] = 0;  // Set y to 0 (ground level)
-            positions[i * 3 + 2] = points[i].z;
-        }
-        
-        pointsObject.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        pointsObject.geometry.attributes.position.needsUpdate = true;
-    }
-    
-    // Update trajectory
-    const trajectoryObject = scene.children.find(child => child instanceof THREE.Line);
-    if (trajectoryObject && trajectory && trajectory.length > 0) {
-        const positions = new Float32Array(trajectory.length * 3);
-        
-        for (let i = 0; i < trajectory.length; i++) {
-            positions[i * 3] = trajectory[i].x;
-            positions[i * 3 + 1] = 0.1;  // Slightly above ground
-            positions[i * 3 + 2] = trajectory[i].z;
-        }
-        
-        trajectoryObject.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        trajectoryObject.geometry.attributes.position.needsUpdate = true;
-    }
-    
-    // Update car position
-    const carObject = scene.children.find(child => child instanceof THREE.Mesh && child.geometry instanceof THREE.BoxGeometry);
-    if (carObject && car) {
-        carObject.position.x = car.x;
-        carObject.position.z = car.z;
-    }
+    // Also update position and orientation
+    fetch('/position')
+        .then(response => response.json())
+        .then(data => {
+            if (data.orientation) {
+                // Update car rotation based on yaw
+                car.rotation.y = data.orientation[2];
+            }
+        })
+        .catch(error => console.error('Error fetching position data:', error));
 }
 
+// Function to update the 3D map orientation based on IMU data
 function updateMapOrientation(orientation) {
-    const mapContainer = document.getElementById('map-3d');
-    if (!mapContainer) return;
-    
-    const scene = mapContainer.querySelector('canvas')?.['__three_scene'];
-    if (!scene) return;
-    
-    // Update car orientation based on IMU data
-    const carObject = scene.children.find(child => child instanceof THREE.Mesh && child.geometry instanceof THREE.BoxGeometry);
-    if (carObject && orientation) {
-        const yaw = orientation.yaw * (Math.PI / 180);  // Convert to radians
-        carObject.rotation.y = -yaw;  // Negative to match coordinate system
-    }
-    
-    // Optionally update camera position to follow car
-    const camera = mapContainer.querySelector('canvas')?.['__three_camera'];
-    if (camera && carObject) {
-        const distance = 5;
-        const height = 5;
-        const angle = carObject.rotation.y - Math.PI / 4;  // Offset for better view
+    // This is a placeholder for map orientation updates
+    // In a real implementation, this would adjust the camera or scene
+    // based on the IMU orientation data
+    if (mapControls) {
+        // Example: Adjust the camera target based on roll and pitch
+        // This would need to be customized based on your specific map implementation
+        const rollRad = orientation.roll * Math.PI / 180;
+        const pitchRad = orientation.pitch * Math.PI / 180;
         
-        camera.position.x = carObject.position.x + distance * Math.sin(angle);
-        camera.position.z = carObject.position.z + distance * Math.cos(angle);
-        camera.position.y = height;
-        
-        camera.lookAt(carObject.position);
+        // This is just an example - actual implementation would depend on your map setup
+        // mapControls.target.y = Math.sin(pitchRad) * 5;
+        // mapControls.target.x = Math.sin(rollRad) * 5;
+        // mapControls.update();
     }
 } 

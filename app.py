@@ -1,8 +1,4 @@
 import eventlet
-# 在任何其他导入之前执行monkey_patch
-eventlet.monkey_patch()
-
-import os
 import time
 import json
 import threading
