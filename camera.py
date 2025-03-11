@@ -4,7 +4,7 @@ import time
 from LOBOROBOT import LOBOROBOT
 
 class Camera:
-    def __init__(self, camera_id=0, width=640, height=480):
+    def __init__(self, camera_id=0, width=640, height=480,robot=None):
         self.camera_id = camera_id
         self.width = width
         self.height = height
