@@ -6,20 +6,28 @@ from flask import Flask, render_template, Response, jsonify, request
 from flask_socketio import SocketIO, emit
 import cv2
 import numpy as np
+import eventlet
 
 from LOBOROBOT import LOBOROBOT
 from camera import Camera
 from slam import SLAM
 from imu import MPU6050  # Import the MPU6050 class
 
+# 初始化eventlet，解决并发问题
+eventlet.monkey_patch()
+
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'smartcar2025'
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+# 改进SocketIO配置，增加心跳包和超时处理
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', 
+                   ping_timeout=10, ping_interval=5,
+                   max_http_buffer_size=5*1024*1024)  # 增加缓冲区大小
 
 # Initialize hardware components
 robot = LOBOROBOT()
-camera = Camera(camera_id=0, width=640, height=480,robot=robot)
+# 降低分辨率到320x240，提高传输性能
+camera = Camera(camera_id=0, width=320, height=240, robot=robot, jpeg_quality=60)
 slam = SLAM(camera=camera, use_imu=True)  # Enable IMU integration with SLAM
 
 # Global variables for control
@@ -45,11 +53,21 @@ def index():
 def video_feed():
     """Video streaming route"""
     def generate():
+        last_frame_time = 0
+        frame_interval = 1/10  # 限制最大10fps的输出，减轻网络负担
+        
         while True:
+            # 控制帧率
+            current_time = time.time()
+            if current_time - last_frame_time < frame_interval:
+                time.sleep(0.01)  # 短暂休眠以减少CPU使用
+                continue
+                
             frame = camera.get_frame()
             if frame is not None:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                last_frame_time = time.time()
             else:
                 time.sleep(0.1)
     
@@ -120,6 +138,12 @@ def reset_gimbal():
     current_gimbal_v = 40
     return jsonify({'status': 'success'})
 
+# 保持连接的心跳检测
+@socketio.on('ping')
+def handle_ping():
+    """Handle ping from client to keep connection alive"""
+    emit('pong', {'timestamp': time.time()})
+
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
@@ -128,6 +152,8 @@ def handle_connect():
         'status': 'connected',
         'imu_available': slam.imu_available
     })
+    # 发送连接成功消息并设置心跳机制
+    emit('connection_established', {'timestamp': time.time()})
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -216,6 +242,8 @@ def handle_gimbal_control(data):
     if abs(x) < 0.01 and abs(y) < 0.01:
         # 回中信号意味着停止云台移动，不需要反转方向
         # 不更新云台位置，只发送当前状态
+        current_gimbal_h=80
+        current_gimbal_v=40
         emit('gimbal_update', {
             'horizontal': current_gimbal_h,
             'vertical': current_gimbal_v
@@ -281,15 +309,31 @@ def send_imu_data():
 
 if __name__ == '__main__':
     try:
+        # 设置服务器超时
+        eventlet.wsgi.server.MAX_HEADER_LINE = 32768
+        eventlet.websocket.WebSocketWSGI.max_frame_length = 16 * 1024 * 1024
+        
+        # 配置日志，减少不必要的输出
+        import logging
+        log = logging.getLogger('werkzeug')
+        log.setLevel(logging.ERROR)
+        
         # Start IMU data thread
         imu_thread = threading.Thread(target=send_imu_data)
         imu_thread.daemon = True
         imu_thread.start()
         
-        # Use eventlet for better performance with WebSocket
-        socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+        # 使用eventlet和优化的性能参数
+        print("启动AI智能四驱车服务器，访问 http://localhost:5000")
+        socketio.run(app, host='0.0.0.0', port=5000, debug=False,
+                    log_output=False,  # 减少日志输出
+                    max_size=16 * 1024 * 1024,  # 增加最大数据包大小
+                    use_reloader=False)  # 禁用reloader提高稳定性
+    except Exception as e:
+        print(f"服务器启动错误: {e}")
     finally:
         # Clean up resources
+        print("关闭服务器并清理资源...")
         camera.stop()
         slam.stop()
         robot.t_stop(0) 

@@ -4,7 +4,7 @@ import time
 from LOBOROBOT import LOBOROBOT
 
 class Camera:
-    def __init__(self, camera_id=0, width=640, height=480,robot=None):
+    def __init__(self, camera_id=0, width=640, height=480, robot=None, jpeg_quality=70):
         self.camera_id = camera_id
         self.width = width
         self.height = height
@@ -12,9 +12,12 @@ class Camera:
         self.frame = None
         self.running = False
         self.lock = threading.Lock()
+        # JPEG压缩质量（0-100），降低可提高传输速度
+        self.jpeg_quality = jpeg_quality
+        # 帧率控制
+        self.last_frame_time = 0
+        self.frame_interval = 1/15  # 目标15fps
         
-        # Initialize the robot for gimbal control
-        #self.robot = LOBOROBOT()
         # 使用传入的 robot 实例，若未提供则创建新实例
         self.robot = robot if robot is not None else LOBOROBOT()
         
@@ -38,6 +41,8 @@ class Camera:
         self.camera = cv2.VideoCapture(self.camera_id)
         self.camera.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.camera.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        # 设置更低的帧率以减少CPU使用
+        self.camera.set(cv2.CAP_PROP_FPS, 15)
         
         if not self.camera.isOpened():
             raise RuntimeError("Could not open camera")
@@ -60,10 +65,21 @@ class Camera:
         while self.running:
             ret, frame = self.camera.read()
             if not ret:
+                time.sleep(0.1)
                 continue
+            
+            # 通过调整大小来减少处理负担
+            if self.width > 320:  # 如果原设置分辨率较高，则降低
+                frame = cv2.resize(frame, (320, 240))
             
             with self.lock:
                 self.frame = frame
+            
+            # 控制帧率，避免CPU过高负载
+            processing_time = time.time() - self.last_frame_time
+            if processing_time < self.frame_interval:
+                time.sleep(self.frame_interval - processing_time)
+            self.last_frame_time = time.time()
     
     def get_frame(self):
         """Get the current frame as JPEG bytes"""
@@ -71,8 +87,11 @@ class Camera:
             if self.frame is None:
                 return None
             
-            # Encode frame as JPEG
-            ret, jpeg = cv2.imencode('.jpg', self.frame)
+            # 设置JPEG编码参数，降低质量以提高传输速度
+            encode_params = [int(cv2.IMWRITE_JPEG_QUALITY), self.jpeg_quality]
+            
+            # Encode frame as JPEG with lower quality
+            ret, jpeg = cv2.imencode('.jpg', self.frame, encode_params)
             if not ret:
                 return None
             
