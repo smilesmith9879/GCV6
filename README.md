@@ -146,6 +146,17 @@ Connect the MPU6050 to the Raspberry Pi's I2C pins:
 - SDA → GPIO2 (Pin 3)
 - INT → Not required, but can be connected to any available GPIO pin for interrupt-based readings
 
+### Fault Tolerance
+
+The system includes robust fault tolerance for the IMU:
+
+- **Automatic Detection**: The system automatically detects if the MPU6050 is connected
+- **Graceful Degradation**: If the IMU is not available, the system falls back to camera-only SLAM
+- **Runtime Monitoring**: Continuous monitoring for IMU disconnection during operation
+- **UI Feedback**: The web interface clearly shows IMU status and hides IMU data when not available
+
+This ensures the system can operate in various hardware configurations, making it more versatile and robust.
+
 ### Testing the IMU
 
 A test script is provided to verify the MPU6050 is working correctly:
@@ -155,15 +166,17 @@ python3 test_imu.py
 ```
 
 This script will:
-1. Initialize the MPU6050
-2. Calibrate the sensor (keep it still during calibration)
-3. Display real-time orientation and acceleration data
+1. Check if the MPU6050 is available on the I2C bus
+2. Initialize the MPU6050 if available
+3. Calibrate the sensor (keep it still during calibration)
+4. Display real-time orientation and acceleration data
 
 ### IMU Data in the Web Interface
 
 The web interface displays IMU data in real-time:
 - Roll and pitch angles in the status bar
 - Acceleration values in the IMU data section
+- IMU connection status indicator
 
 The IMU data is also used to enhance the SLAM system by:
 - Improving rotation estimation

@@ -16,10 +16,34 @@ def main():
     print("Make sure the sensor is connected to the I2C pins of your Raspberry Pi.")
     print()
     
+    # 首先检查 MPU6050 是否可用
+    print("Checking if MPU6050 is available...")
+    if not MPU6050.is_available():
+        print("\nERROR: MPU6050 not detected on the I2C bus!")
+        print("\nTroubleshooting tips:")
+        print("1. Make sure the MPU6050 is properly connected to the I2C pins:")
+        print("   - VCC → 3.3V")
+        print("   - GND → GND")
+        print("   - SCL → GPIO3 (Pin 5)")
+        print("   - SDA → GPIO2 (Pin 3)")
+        print("2. Check if I2C is enabled on your Raspberry Pi:")
+        print("   - Run 'sudo raspi-config' and enable I2C under Interface Options")
+        print("3. Check if the I2C device is detected:")
+        print("   - Run 'sudo i2cdetect -y 1'")
+        print("   - You should see a device at address 0x68 (the MPU6050)")
+        return
+    
+    print("MPU6050 detected on the I2C bus!")
+    
     try:
         # Initialize the MPU6050
-        print("Initializing MPU6050...")
+        print("\nInitializing MPU6050...")
         imu = MPU6050()
+        
+        if not imu.available:
+            print("ERROR: MPU6050 initialization failed!")
+            return
+            
         print("MPU6050 initialized successfully!")
         
         # Calibrate the sensor
@@ -72,7 +96,7 @@ def main():
         print("   - You should see a device at address 0x68 (the MPU6050)")
     finally:
         # Clean up
-        if 'imu' in locals():
+        if 'imu' in locals() and imu.available:
             imu.stop()
 
 if __name__ == "__main__":

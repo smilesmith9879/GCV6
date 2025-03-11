@@ -244,4 +244,17 @@ h1 {
     .imu-item {
         flex-basis: 100%;
     }
+}
+
+/* Add styles for IMU status */
+#imu-status {
+    font-weight: bold;
+}
+
+#imu-status.connected {
+    color: #4CAF50;
+}
+
+#imu-status.disconnected {
+    color: #F44336;
 } 

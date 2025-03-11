@@ -31,16 +31,28 @@ class SLAM:
         # For trajectory tracking
         self.trajectory = []
         
-        # Initialize IMU if available
+        # Initialize IMU if available and requested
         self.use_imu = use_imu
         self.imu = None
+        self.imu_available = False
+        
         if self.use_imu:
-            try:
-                self.imu = MPU6050()
-                print("IMU initialized successfully")
-            except Exception as e:
-                print(f"Failed to initialize IMU: {e}")
-                self.use_imu = False
+            # 首先检查 IMU 是否可用
+            if MPU6050.is_available():
+                try:
+                    self.imu = MPU6050()
+                    if self.imu.available:
+                        self.imu_available = True
+                        print("IMU initialized successfully and will be used for SLAM")
+                    else:
+                        print("IMU initialization failed, falling back to camera-only SLAM")
+                except Exception as e:
+                    print(f"Error initializing IMU: {e}")
+                    print("Falling back to camera-only SLAM")
+            else:
+                print("IMU hardware not detected, falling back to camera-only SLAM")
+        else:
+            print("IMU usage disabled by configuration, using camera-only SLAM")
     
     def start(self):
         """Start the SLAM processing thread"""
@@ -51,7 +63,7 @@ class SLAM:
             raise ValueError("Camera must be set before starting SLAM")
         
         # Start IMU if available
-        if self.use_imu and self.imu:
+        if self.imu_available:
             try:
                 print("Calibrating IMU...")
                 self.imu.calibrate()
@@ -59,7 +71,8 @@ class SLAM:
                 print("IMU started successfully")
             except Exception as e:
                 print(f"Failed to start IMU: {e}")
-                self.use_imu = False
+                self.imu_available = False
+                print("Falling back to camera-only SLAM")
         
         self.running = True
         self.thread = threading.Thread(target=self._process_loop)
@@ -73,8 +86,12 @@ class SLAM:
             self.thread.join()
         
         # Stop IMU if it was started
-        if self.use_imu and self.imu:
-            self.imu.stop()
+        if self.imu_available:
+            try:
+                self.imu.stop()
+                print("IMU stopped successfully")
+            except Exception as e:
+                print(f"Error stopping IMU: {e}")
         
         # Save the final map data
         self._save_map_data()
@@ -94,10 +111,15 @@ class SLAM:
             self._process_frame(frame)
             
             # Update orientation from IMU if available
-            if self.use_imu and self.imu:
-                roll, pitch, yaw = self.imu.get_orientation()
-                with self.lock:
-                    self.current_orientation = [roll, pitch, yaw]
+            if self.imu_available:
+                try:
+                    roll, pitch, yaw = self.imu.get_orientation()
+                    with self.lock:
+                        self.current_orientation = [roll, pitch, yaw]
+                except Exception as e:
+                    print(f"Error getting IMU orientation: {e}")
+                    self.imu_available = False
+                    print("IMU disconnected, falling back to camera-only SLAM")
             
             # Sleep to reduce CPU usage
             time.sleep(0.05)
@@ -140,8 +162,12 @@ class SLAM:
                         
                         # Get IMU data if available
                         imu_orientation = None
-                        if self.use_imu and self.imu:
-                            imu_orientation = self.imu.get_orientation()
+                        if self.imu_available:
+                            try:
+                                imu_orientation = self.imu.get_orientation()
+                            except Exception as e:
+                                print(f"Error getting IMU orientation during motion estimation: {e}")
+                                self.imu_available = False
                         
                         # Update position (simplified)
                         with self.lock:
@@ -235,8 +261,12 @@ class SLAM:
             self.prev_des = None
             
             # Reset IMU yaw if available
-            if self.use_imu and self.imu:
-                # We can't reset the IMU's internal values directly,
-                # but we can note the current values and apply an offset
-                _, _, yaw = self.imu.get_orientation()
-                self.imu_yaw_offset = yaw  # Store the current yaw as an offset 
+            if self.imu_available:
+                try:
+                    # We can't reset the IMU's internal values directly,
+                    # but we can note the current values and apply an offset
+                    _, _, yaw = self.imu.get_orientation()
+                    self.imu_yaw_offset = yaw  # Store the current yaw as an offset
+                except Exception as e:
+                    print(f"Error resetting IMU: {e}")
+                    self.imu_available = False 

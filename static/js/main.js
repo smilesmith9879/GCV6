@@ -39,21 +39,57 @@ document.addEventListener('DOMContentLoaded', function() {
     const accelXValue = document.getElementById('accel-x-value');
     const accelYValue = document.getElementById('accel-y-value');
     const accelZValue = document.getElementById('accel-z-value');
+    const imuDataContainer = document.querySelector('.imu-data-container');
+    
+    // Add IMU status indicator to the status bar
+    const statusBar = document.querySelector('.status-bar');
+    const imuStatusItem = document.createElement('div');
+    imuStatusItem.className = 'status-item';
+    imuStatusItem.innerHTML = '<span class="label">IMU:</span><span id="imu-status">Checking...</span>';
+    statusBar.appendChild(imuStatusItem);
+    const imuStatus = document.getElementById('imu-status');
+    
+    // Function to update IMU status display
+    function updateIMUStatus(available) {
+        if (available) {
+            imuStatus.textContent = 'Connected';
+            imuStatus.className = 'connected';
+            imuDataContainer.style.display = 'block';
+        } else {
+            imuStatus.textContent = 'Not Available';
+            imuStatus.className = 'disconnected';
+            imuDataContainer.style.display = 'none';
+            
+            // Reset orientation values in status bar
+            rollValue.textContent = 'N/A';
+            pitchValue.textContent = 'N/A';
+        }
+    }
+    
+    // Check IMU status on connection
+    socket.on('status', function(data) {
+        updateIMUStatus(data.imu_available);
+    });
     
     // Listen for IMU updates from the server
     socket.on('imu_update', function(data) {
-        // Update orientation values
-        rollValue.textContent = Math.round(data.orientation.roll) + '°';
-        pitchValue.textContent = Math.round(data.orientation.pitch) + '°';
+        // Update IMU status
+        updateIMUStatus(data.available);
         
-        // Update acceleration values
-        accelXValue.textContent = data.acceleration.x.toFixed(2) + ' g';
-        accelYValue.textContent = data.acceleration.y.toFixed(2) + ' g';
-        accelZValue.textContent = data.acceleration.z.toFixed(2) + ' g';
-        
-        // Use IMU data to enhance the 3D map visualization if needed
-        if (mapScene) {
-            updateMapOrientation(data.orientation);
+        if (data.available) {
+            // Update orientation values
+            rollValue.textContent = Math.round(data.orientation.roll) + '°';
+            pitchValue.textContent = Math.round(data.orientation.pitch) + '°';
+            
+            // Update acceleration values
+            accelXValue.textContent = data.acceleration.x.toFixed(2) + ' g';
+            accelYValue.textContent = data.acceleration.y.toFixed(2) + ' g';
+            accelZValue.textContent = data.acceleration.z.toFixed(2) + ' g';
+            
+            // Use IMU data to enhance the 3D map visualization if needed
+            if (mapScene) {
+                updateMapOrientation(data.orientation);
+            }
         }
     });
     

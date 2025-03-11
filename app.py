@@ -69,30 +69,41 @@ def position():
 @app.route('/imu_data')
 def imu_data():
     """Return the current IMU data as JSON"""
-    if slam.use_imu and slam.imu:
-        orientation = slam.imu.get_orientation()
-        acceleration = slam.imu.get_acceleration()
-        angular_velocity = slam.imu.get_angular_velocity()
-        
-        return jsonify({
-            'orientation': {
-                'roll': orientation[0],
-                'pitch': orientation[1],
-                'yaw': orientation[2]
-            },
-            'acceleration': {
-                'x': acceleration[0],
-                'y': acceleration[1],
-                'z': acceleration[2]
-            },
-            'angular_velocity': {
-                'x': angular_velocity[0],
-                'y': angular_velocity[1],
-                'z': angular_velocity[2]
-            }
-        })
+    if slam.imu_available:
+        try:
+            orientation = slam.imu.get_orientation()
+            acceleration = slam.imu.get_acceleration()
+            angular_velocity = slam.imu.get_angular_velocity()
+            
+            return jsonify({
+                'available': True,
+                'orientation': {
+                    'roll': orientation[0],
+                    'pitch': orientation[1],
+                    'yaw': orientation[2]
+                },
+                'acceleration': {
+                    'x': acceleration[0],
+                    'y': acceleration[1],
+                    'z': acceleration[2]
+                },
+                'angular_velocity': {
+                    'x': angular_velocity[0],
+                    'y': angular_velocity[1],
+                    'z': angular_velocity[2]
+                }
+            })
+        except Exception as e:
+            print(f"Error getting IMU data: {e}")
+            slam.imu_available = False
+            return jsonify({'available': False, 'error': 'IMU disconnected during operation'})
     else:
-        return jsonify({'error': 'IMU not available'})
+        return jsonify({'available': False, 'error': 'IMU not available'})
+
+@app.route('/imu_status')
+def imu_status():
+    """Return the current IMU status"""
+    return jsonify({'available': slam.imu_available})
 
 @app.route('/reset_slam', methods=['POST'])
 def reset_slam():
@@ -113,7 +124,10 @@ def reset_gimbal():
 def handle_connect():
     """Handle client connection"""
     print('Client connected')
-    emit('status', {'status': 'connected'})
+    emit('status', {
+        'status': 'connected',
+        'imu_available': slam.imu_available
+    })
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -200,21 +214,35 @@ def handle_gimbal_control(data):
 def send_imu_data():
     """Send IMU data to clients periodically"""
     while True:
-        if slam.use_imu and slam.imu:
-            orientation = slam.imu.get_orientation()
-            acceleration = slam.imu.get_acceleration()
-            
+        if slam.imu_available:
+            try:
+                orientation = slam.imu.get_orientation()
+                acceleration = slam.imu.get_acceleration()
+                
+                socketio.emit('imu_update', {
+                    'available': True,
+                    'orientation': {
+                        'roll': round(orientation[0], 2),
+                        'pitch': round(orientation[1], 2),
+                        'yaw': round(orientation[2], 2)
+                    },
+                    'acceleration': {
+                        'x': round(acceleration[0], 2),
+                        'y': round(acceleration[1], 2),
+                        'z': round(acceleration[2], 2)
+                    }
+                })
+            except Exception as e:
+                print(f"Error sending IMU data: {e}")
+                slam.imu_available = False
+                socketio.emit('imu_update', {
+                    'available': False,
+                    'error': 'IMU disconnected during operation'
+                })
+        else:
+            # Send IMU not available status
             socketio.emit('imu_update', {
-                'orientation': {
-                    'roll': round(orientation[0], 2),
-                    'pitch': round(orientation[1], 2),
-                    'yaw': round(orientation[2], 2)
-                },
-                'acceleration': {
-                    'x': round(acceleration[0], 2),
-                    'y': round(acceleration[1], 2),
-                    'z': round(acceleration[2], 2)
-                }
+                'available': False
             })
         
         time.sleep(0.2)  # Send 5 times per second
@@ -222,10 +250,9 @@ def send_imu_data():
 if __name__ == '__main__':
     try:
         # Start IMU data thread
-        if slam.use_imu and slam.imu:
-            imu_thread = threading.Thread(target=send_imu_data)
-            imu_thread.daemon = True
-            imu_thread.start()
+        imu_thread = threading.Thread(target=send_imu_data)
+        imu_thread.daemon = True
+        imu_thread.start()
         
         # Use eventlet for better performance with WebSocket
         socketio.run(app, host='0.0.0.0', port=5000, debug=False)
